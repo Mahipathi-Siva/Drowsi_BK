@@ -1,0 +1,17 @@
+opencv-python
+mediapipe
+numpy
+scipy
+cmake
+ultralytics
+pygame
+Flask
+Flask-Session
+pymongo
+flask-socketio
+Pillow
+bcrypt
+face-recognition
+opencv-python-headless
+gunicorn
+python==3.9.9
