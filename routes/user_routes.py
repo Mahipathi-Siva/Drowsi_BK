@@ -4,7 +4,7 @@ from routes.auth_routes import token_required
 
 user = Blueprint("user", __name__)
 
-@user.route("/profile", methods=["GET"])
+@user.route("/profile", methods=["POST"])
 @token_required
 def profile(current_user):
     return jsonify({
@@ -13,7 +13,9 @@ def profile(current_user):
             "email": current_user["email"],
             "phone_number": current_user["phone_number"],
             "license_number": current_user["license_number"],
-            "vehicle_number": current_user["vehicle_number"]
+            "vehicle_number": current_user["vehicle_number"],
+            "Days":current_user["day"],
+            "count":current_user["count"]
         }
     }), 200
 

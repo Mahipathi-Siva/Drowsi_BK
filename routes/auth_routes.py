@@ -18,7 +18,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # Rate Limiting to Prevent Brute-Force Attacks
 limiter = Limiter(
     get_remote_address,
-    default_limits=["5 per minute"]
+    default_limits=["50 per minute"]
 )
 
 # Helper Functions
@@ -139,7 +139,7 @@ def otp_verification():
         # Generate JWT Token
         token = jwt.encode({
             "email": data["email"],
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=6)
         }, SECRET_KEY, algorithm="HS256")
         
         # Store token in MongoDB

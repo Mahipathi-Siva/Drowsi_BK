@@ -43,7 +43,7 @@ load_dotenv()
 
 # Create Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/": {"origins": ""}})
+CORS(app)
 
 # Initialize SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*")
