@@ -137,66 +137,52 @@ def combined_detection(email):
             if image is None:
                 continue
 
-            # Flip the image horizontally and convert to RGB
+            # Flip and convert image
             image_rgb = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
-
-            # To improve performance
             image_rgb.flags.writeable = False
-            
-            # Get face mesh results
             results = face_mesh.process(image_rgb)
-
             image_rgb.flags.writeable = True
             image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-
             img_h, img_w, img_c = image_bgr.shape
-            face_3d = []
-            face_2d = []
 
-            # Drowsiness Detection
+            # Drowsiness Detection via face_recognition
             rgb_frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             face_locations = face_recognition.face_locations(rgb_frame)
             count += 1
 
+            mouth_flag = False  # Initialize mouth flag
+
             if face_locations:
                 face_landmarks_list = face_recognition.face_landmarks(rgb_frame, face_locations)
-
                 for face_landmarks in face_landmarks_list:
                     left_eye = np.array(face_landmarks['left_eye'])
                     right_eye = np.array(face_landmarks['right_eye'])
                     mouth = np.array(face_landmarks['bottom_lip'])
-                    print(f"Bottom Lip Landmarks: {face_landmarks['bottom_lip']}")
-
+                    
                     # Calculate EAR and MAR
                     left_ear = eye_aspect_ratio(left_eye)
                     right_ear = eye_aspect_ratio(right_eye)
                     ear = (left_ear + right_ear) / 2.0
                     ear_history.append(ear)
                     if len(ear_history) > EAR_WINDOW:
-                         ear_history.pop(0)
+                        ear_history.pop(0)
                     
                     adaptive_threshold = max(0.2, np.mean(ear_history) * 0.8)
                     eye_flag = ear < adaptive_threshold
 
-                    #mar = mouth_aspect_ratio(mouth)
+                    # Check for mouth openness
+                    mar = mouth_aspect_ratio(mouth)
+                    mouth_flag = mar > MOUTH_AR_THRESH
 
-                    # Check if eyes are closed
-                    #eye_flag = ear < EYE_AR_THRESH
-                    # Check if mouth is open
-                    #mouth_flag = mar > MOUTH_AR_THRESH
-
-
-
-                    # Update score more responsively
-                    if eye_flag :
+                    # Update score responsively
+                    if eye_flag:
                         score += 1
-                    #elif mouth_flag:
-                        #score +=1  # Increase score faster
                     else:
-                        score -= 1  # Decrease score more slowly
+                        score -= 1
                     if score < 0:
                         score = 0
 
+                    # Blink detection (simplified)
                     if eye_flag:
                         if blink_start is None:
                             blink_start = time.time()
@@ -204,195 +190,138 @@ def combined_detection(email):
                         if blink_start and time.time() - blink_start > BLINK_DURATION / 30:
                             blinks += 1
                         blink_start = None
-                    cv2.putText(image_bgr, f"Blinks/min: {blinks}", (20, 80), 
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-                    
-                    mar = mouth_aspect_ratio(mouth)
-                    print(f"MAR: {mar}")
-                    mouth_flag = mar > MOUTH_AR_THRESH
 
-                '''if -10 < y < 10:
-                        if mouth_flag:
-                            yawn_count += 1
-                        #print(f"Yawning detected! Count: {yawn_count}")
-                        else:
-                            yawn_count -= 1
-                    if yawn_count < 0:
-                        yawn_count = 0
-                    current_time = time.time() '''
-                    
-            
+                    cv2.putText(image_bgr, f"Blinks/min: {blinks}", (20, 80),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                    cv2.putText(image_bgr, f"MAR: {mar:.2f}", (20, 120),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
-               
-            y = 0  
-            x = 0
-            z = 0
-            # Check Head Pose
+            # Head pose detection via MediaPipe
             head_pose_alert = False
             if results.multi_face_landmarks:
                 for face_landmarks in results.multi_face_landmarks:
+                    face_3d = []
+                    face_2d = []
                     for idx, lm in enumerate(face_landmarks.landmark):
-                        if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
-                            if idx == 1:
-                                nose_2d = (lm.x * img_w, lm.y * img_h)
-                                nose_3d = (lm.x * img_w, lm.y * img_h, lm.z * 3000)
-
+                        if idx in [33, 263, 1, 61, 291, 199]:
                             x, y = int(lm.x * img_w), int(lm.y * img_h)
-
-                            # Get the 2D Coordinates
                             face_2d.append([x, y])
-
-                            # Get the 3D Coordinates
                             face_3d.append([x, y, lm.z])
-
-                    # Convert it to the NumPy array
+                            if idx == 1:
+                                nose_2d = (x, y)
+                                nose_3d = (x, y, lm.z * 3000)
                     face_2d = np.array(face_2d, dtype=np.float64)
                     face_3d = np.array(face_3d, dtype=np.float64)
 
-                    # Camera matrix
                     focal_length = 1 * img_w
-                    cam_matrix = np.array([ [focal_length, 0, img_h / 2],
-                                            [0, focal_length, img_w / 2],
-                                            [0, 0, 1]])
-
+                    cam_matrix = np.array([[focal_length, 0, img_h / 2],
+                                           [0, focal_length, img_w / 2],
+                                           [0, 0, 1]])
                     dist_matrix = np.zeros((4, 1), dtype=np.float64)
-
-                    # Solve PnP
                     success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
-
-                    # Get rotational matrix
                     rmat, jac = cv2.Rodrigues(rot_vec)
+                    angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+                    x_angle = angles[0] * 360
+                    y_angle = angles[1] * 360
 
-                    # Get angles
-                    angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
-
-                    # Get the y rotation degree
-                    x = angles[0] * 360
-                    y = angles[1] * 360
-                    z = angles[2] * 360
-
-                    # See where the user's head is tilting
-                    if y < -10:
+                    # Determine head pose alert based on angles
+                    text = "Forward"
+                    if y_angle < -10:
                         text = "Looking Left"
                         if head_pose_timer is None:
                             head_pose_timer = time.time()
                         elif time.time() - head_pose_timer > ALERT_DELAY1:
                             head_pose_alert = True
-                            cv2.putText(image_bgr, "Distracted", (image_bgr.shape[1] - 200, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                    elif y > 10:
+                    elif y_angle > 10:
                         text = "Looking Right"
                         if head_pose_timer is None:
                             head_pose_timer = time.time()
                         elif time.time() - head_pose_timer > ALERT_DELAY1:
                             head_pose_alert = True
-                            cv2.putText(image_bgr, "Distracted", (image_bgr.shape[1] - 200, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                    elif x < -10:
+                    elif x_angle < -10:
                         text = "Looking Down"
                         if head_pose_timer is None:
                             head_pose_timer = time.time()
                         elif time.time() - head_pose_timer > ALERT_DELAY:
                             head_pose_alert = True
-                            cv2.putText(image_bgr, "focus on the steering", (image_bgr.shape[1] - 400, 150),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                    elif x > 10:
+                    elif x_angle > 10:
                         text = "Looking Up"
                         if head_pose_timer is None:
                             head_pose_timer = time.time()
                         elif time.time() - head_pose_timer > ALERT_DELAY:
                             head_pose_alert = True
-                            cv2.putText(image_bgr, "focus on the steering", (image_bgr.shape[1] - 400, 150),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
                     else:
-                        text = "Forward"
                         head_pose_timer = None
 
-                    if -10 < y < 10:
+                    # Update yawn count if looking forward and mouth is open
+                    if -10 < y_angle < 10:
                         if mouth_flag:
-                             yawn_count += 1
+                            yawn_count += 1
                         else:
-                             yawn_count -= 1
+                            yawn_count -= 1
                     if yawn_count < 0:
-                         yawn_count = 0
-                    
+                        yawn_count = 0
 
-                    # Display the nose direction
-                    nose_3d_projection, jacobian = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
+                    # Annotate head pose on frame
+                    cv2.putText(image_bgr, text, (20, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
+
+                    # Draw nose direction line
+                    nose_3d_projection, _ = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
                     p1 = (int(nose_2d[0]), int(nose_2d[1]))
-                    p2 = (int(nose_2d[0] + y * 10), int(nose_2d[1] - x * 10))
+                    p2 = (int(nose_2d[0] + y_angle * 10), int(nose_2d[1] - x_angle * 10))
                     cv2.line(image_bgr, p1, p2, (255, 0, 0), 3)
-                    cv2.putText(image_bgr, text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
 
-            # Display drowsiness score and warning
+            # Display score and drowsiness warning
             cv2.putText(image_bgr, f"Score: {score}", (10, image_bgr.shape[0] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-            
-
             if score >= 6:
                 cv2.putText(image_bgr, "DROWSY!", (image_bgr.shape[1] - 200, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
                 head_pose_alert = True
 
-            (text_width, text_height), _ = cv2.getTextSize(f"Score: {score}", cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-
-            cv2.putText(image_bgr, f"Yawn: {yawn_count}", (10, image_bgr.shape[0] - 40),  # Move up
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
-            if yawn_count >= 6 :
+            cv2.putText(image_bgr, f"Yawn: {yawn_count}", (10, image_bgr.shape[0] - 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
+            if yawn_count >= 6:
                 cv2.putText(image_bgr, "Continuous Yawning", (image_bgr.shape[1] - 300, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
                 head_pose_alert = True
 
-
-
-            # Check for cell phone detection
-            results = model(image)
+            # Cell phone detection using YOLO
+            frame_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            results_yolo = model(frame_rgb)
             names = model.names
-            for r in results:
+            for r in results_yolo:
                 for c in r.boxes.cls:
-                    if(names[int(c)] == "mobile"):
+                    if names[int(c)] == "mobile":
                         print("Cell phone detected!")
                         head_pose_alert = True
-                        cv2.putText(image_bgr, "Mobile Phone  detected", (image_bgr.shape[1] - 400, 100),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-           # Inside your combined_detection function
+                        cv2.putText(image_bgr, "Mobile Phone detected", (image_bgr.shape[1] - 400, 100),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
 
+            # If any alert triggered, update MongoDB and emit via socket
             if head_pose_alert:
-                today_date = time.strftime("%Y-%m-%d")  # Get today's date in YYYY-MM-DD format
-
-                # Check if user exists
+                today_date = time.strftime("%Y-%m-%d")
                 user = users_collection.find_one({"email": email})
-                print(f"Today Date: {today_date}, Email: {email}, User: {user}")
-                
-                if user:  # Ensure user exists
-                    # If today_date is already present in the user's data
+                if user:
                     if today_date in user["day"]:
                         index = user["day"].index(today_date)
-                        # Update the count at the specific index of both arrays
                         users_collection.update_one(
                             {"email": email},
-                            {"$inc": {f"count.{index}": 1}}  # Increment count at the specific index
+                            {"$inc": {f"count.{index}": 1}}
                         )
                     else:
                         users_collection.update_one(
                             {"email": email},
                             {"$push": {"day": today_date}, "$addToSet": {"count": 0}}
                         )
-
-
-                   
-
-            if head_pose_alert:
                 socketio.emit('alert', {'message': 'Drowsiness detected!'}, namespace='/alert')
                 alert_sound.play()
-                
-                
 
             ret, buffer = cv2.imencode('.jpg', image_bgr)
-            frame = buffer.tobytes()
-
-            yield(b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         except Exception as e:
             print(f"Error processing frame: {e}")
             break
