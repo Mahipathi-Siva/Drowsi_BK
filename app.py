@@ -390,15 +390,28 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    print("Client connected!")
-
+    # Extract email from connection query
+    email = request.args.get('email')
+    if email:
+        # Store or use the email as needed
+        global current_email
+        current_email = email
+        print(f"Client connected with email: {email}")
+    else:
+        print("Client connected without email")
+        
 @app.route('/video')
 def video():
     global video_streaming
     # Reset the flag so that streaming starts fresh
     video_streaming = True
-    email = "mahipathi.31@gmail.com"
-    return Response(combined_detection(email), mimetype='multipart/x-mixed-replace; boundary=frame')
+    
+    # Use the global email set during socket connection
+    if 'current_email' in globals():
+        return Response(combined_detection(current_email), mimetype='multipart/x-mixed-replace; boundary=frame')
+    else:
+        # Fallback if no email was set
+        return Response(combined_detection("mahipathisivanagaraju@gmail.com"), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/stop_video')
 def stop_video():
