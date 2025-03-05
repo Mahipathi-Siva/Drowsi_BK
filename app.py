@@ -394,8 +394,8 @@ def handle_connect():
     email = request.args.get('email')
     if email:
         # Store or use the email as needed
-        global current_email
-        current_email = email
+        global current_mail
+        current_mail = email
         print(f"Client connected with email: {email}")
     else:
         print("Client connected without email")
@@ -407,8 +407,8 @@ def video():
     video_streaming = True
     
     # Use the global email set during socket connection
-    if 'current_email' in globals():
-        return Response(combined_detection(current_email), mimetype='multipart/x-mixed-replace; boundary=frame')
+    if 'current_mail' in globals():
+        return Response(combined_detection(current_mail), mimetype='multipart/x-mixed-replace; boundary=frame')
     else:
         # Fallback if no email was set
         return Response(combined_detection("mahipathisivanagaraju@gmail.com"), mimetype='multipart/x-mixed-replace; boundary=frame')
