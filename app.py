@@ -9,6 +9,7 @@ from routes.user_routes import user
 from database import users_collection, blacklisted_tokens_collection, db
 from flask import Blueprint, request, Response
 import cv2
+from flask import request
 import mediapipe as mp
 import numpy as np
 import time
@@ -388,14 +389,16 @@ def home():
 def index():
     return render_template('index.html')
 
+connected_users = {}
+
 @socketio.on('connect')
 def handle_connect():
-    # Extract email from connection query
+    # Extract email from query parameters
     email = request.args.get('email')
+
     if email:
-        # Store or use the email as needed
-        global current_mail
-        current_mail = email
+        # Store the email globally with the session ID
+        connected_users[request.sid] = email
         print(f"Client connected with email: {email}")
     else:
         print("Client connected without email")
@@ -403,15 +406,18 @@ def handle_connect():
 @app.route('/video')
 def video():
     global video_streaming
-    # Reset the flag so that streaming starts fresh
     video_streaming = True
-    
-    # Use the global email set during socket connection
-    if 'current_mail' in globals():
-        return Response(combined_detection(current_mail), mimetype='multipart/x-mixed-replace; boundary=frame')
-    else:
-        # Fallback if no email was set
-        return Response(combined_detection("mahipathisivanagaraju@gmail.com"), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    # Retrieve email from connected_users using the latest socket connection
+    if not connected_users:
+        return jsonify({"error": "No active socket connection"}), 400
+
+    # Get the latest connected user's email
+    email = list(connected_users.values())[-1]
+    print(f"Streaming video for email: {email}")
+
+    return Response(combined_detection(email), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 @app.route('/stop_video')
 def stop_video():
@@ -423,4 +429,4 @@ def stop_video():
 if __name__ == "__main__":
     print("Starting Drowsi application...")
     # Run with socketio instead of regular app.run
-    socketio.run(app, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
