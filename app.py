@@ -429,4 +429,4 @@ def stop_video():
 if __name__ == "__main__":
     print("Starting Drowsi application...")
     # Run with socketio instead of regular app.run
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=False, allow_unsafe_werkzeug=True)
