@@ -90,7 +90,7 @@ def handle_camera_frame(data):
 
 
 # Load YOLO model
-model = YOLO('best.pt')
+model = YOLO('mobile_detection.pt')
 
 # Utility functions for ML detection
 def eye_aspect_ratio(eye):
@@ -294,7 +294,7 @@ def combined_detection(email):
             names = model.names
             for r in results_yolo:
                 for c in r.boxes.cls:
-                    if names[int(c)] == "mobile":
+                    if names[int(c)] == "cell phone":
                         print("Cell phone detected!")
                         head_pose_alert = True
                         cv2.putText(image_bgr, "Mobile Phone detected", (image_bgr.shape[1] - 400, 100),
