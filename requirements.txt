@@ -1,5 +1,5 @@
 opencv-python
-mediapipe==0.10.21
+mediapipe==v0.10.18
 numpy
 scipy
 cmake
